@@ -1,0 +1,53 @@
+alation:
+  base_url: https://alation.company.com
+  read_token_secret_ref:  vault://kv/alation/read-token
+  write_token_secret_ref: vault://kv/alation/writeback-token   # SEPARATE from read token
+  table_page_size: 1500
+  document_page_size: 100
+  data_product_page_size: 100
+  data_source_ids: auto
+  parallel_workers: 4
+  data_products_enabled: true
+  retry: { max_attempts: 5, backoff_initial_seconds: 2, backoff_max_seconds: 60 }
+  # Source payload key mapping (logical column -> candidate JSON keys, first present wins).
+  # Defaults follow the documented Alation/ODPS shapes; override only if your version differs.
+  # field_map:
+  #   table:    { last_updated_at: [ts_updated, last_updated], object_type: [table_type] }
+  #   document: { last_updated_at: [ts_updated] }
+  #   custom_field: { name: [field_name, name], value: [value], type: [value_type, type] }
+postgres:
+  dsn: postgresql://landing.internal:5432/alation_landing
+  user_secret_ref: vault://kv/landing/pg-user
+  pass_secret_ref: vault://kv/landing/pg-pass
+  upsert_batch_size: 500
+stardog:
+  sparql_endpoint: https://stardog.internal:5820/db_domain/query
+  reader_token_secret_ref: vault://kv/stardog/reader-token
+  concept_extract_cadence_hours: 24
+  glossary_document_hub_id: 0   # Glossary Hub id; find via `resolve-hub`, then `render-sms2` before virtual add
+matcher:
+  engine: trgm                 # trgm | embedding | agent  (primary, publishable)
+  shadow_engine: agent         # optional: run alongside primary for precision@1 eval (writes status=shadow)
+  top_n: 5
+  min_similarity: 0.45
+  publish_threshold: 0.62
+  min_label_length: 3
+  agent: { model: claude-sonnet-4-6, prompt_version: bind-v1, temperature: 0.0,
+           max_candidates: 5, only_changed: true, shortlist_engine: trgm, shadow: true }
+writeback:
+  enabled: true
+  conflict_policy: protect_human
+  single_threaded: true
+  cfv_async: true              # use /custom_field_value/async/ (sync endpoint deprecated @2024.3.1); false for older Alation
+  job_poll_interval: 2.0       # seconds between Jobs API polls confirming an async CFV write
+  job_poll_max: 30             # max polls before giving up on a job
+  # Display names of the four binding fields (design §4.2). Used to resolve field_ids.
+  field_names:
+    ontology_uri:           "Ontology URI"
+    suggested_ontology_uri: "Suggested Ontology URI"
+    suggestion_confidence:  "Suggestion Confidence"
+    binding_status:         "Binding Status"
+  # Numeric field ids. Leave 0 to auto-resolve from field_names via the Custom Fields API at
+  # run time; pin them once for stability. Resolve & print with:  python -m alation_rdf_sync resolve-fields
+  field_ids: { ontology_uri: 0, suggested_ontology_uri: 0, suggestion_confidence: 0, binding_status: 0 }
+schedule: { cadence_minutes: 60, jitter_seconds: 120, per_run_max_minutes: 90 }

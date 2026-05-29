@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: alation-rdf-sync }
+spec:
+  schedule: "*/60 * * * *"
+  concurrencyPolicy: Forbid          # a slow run must not overlap the next
+  startingDeadlineSeconds: 120       # tolerate a missed start within the jitter window
+  successfulJobsHistoryLimit: 3      # keep recent runs for dashboards/alerts
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 5400     # per_run_max_minutes = 90
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: adapter
+              image: registry.internal/alation-rdf-sync:1.0.0
+              envFrom: [{ secretRef: { name: alation-rdf-sync-secrets } }]
+              volumeMounts: [{ name: config, mountPath: /app/config.yaml, subPath: config.yaml }]
+          volumes: [{ name: config, configMap: { name: alation-rdf-sync-config } }]

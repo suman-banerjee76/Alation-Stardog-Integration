@@ -1,0 +1,30 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix alat: <https://company.com/ns/alation/> .
+
+alat: a owl:Ontology ;
+    rdfs:label "Alation Catalog Bridge" ;
+    owl:imports <http://www.w3.org/ns/dcat#> , <http://www.w3.org/2004/02/skos/core#> , <http://purl.org/dc/terms/> .
+
+alat:Table        rdfs:subClassOf dcat:Distribution .
+alat:Document     a owl:Class .
+alat:GlossaryTerm rdfs:subClassOf skos:Concept , alat:Document .
+alat:DataProduct  rdfs:subClassOf dcat:Dataset .
+alat:Contract     a owl:Class .
+
+# CONFIRMED binding (from the real Ontology URI field only)
+alat:realises          a owl:ObjectProperty ; rdfs:domain alat:Table .
+alat:wraps             a owl:ObjectProperty ; rdfs:domain alat:DataProduct ; rdfs:range alat:Table .
+alat:hasContract       a owl:ObjectProperty ; rdfs:domain alat:DataProduct ; rdfs:range alat:Contract .
+# PROVISIONAL (machine suggestion, NOT authoritative)
+alat:suggestedConcept    a owl:ObjectProperty ; rdfs:domain alat:Table .
+alat:suggestionConfidence a owl:DatatypeProperty .
+
+alat:steward         a owl:DatatypeProperty .
+alat:freshnessSlo    a owl:DatatypeProperty .
+alat:contractVersion a owl:DatatypeProperty .
+alat:dataSourceId    a owl:DatatypeProperty .
+alat:schema          a owl:DatatypeProperty .

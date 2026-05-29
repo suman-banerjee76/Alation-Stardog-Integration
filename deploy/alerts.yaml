@@ -1,0 +1,31 @@
+# Prometheus alerting rules for the adapter CronJob (infra-level; data-quality alerts live in
+# sql/alerts.sql). Requires kube-state-metrics. Apply as a PrometheusRule CR or rules file.
+groups:
+  - name: alation-rdf-sync
+    rules:
+      - alert: AlationSyncJobFailed
+        expr: kube_job_status_failed{job_name=~"alation-rdf-sync.*"} > 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "alation-rdf-sync run failed"
+          description: "A CronJob run entered Failed state (see pod logs / sync_state.last_error)."
+
+      - alert: AlationSyncDeadlineExceeded
+        # Job ran past activeDeadlineSeconds (5400 = 90 min per_run_max_minutes) without completing.
+        expr: |
+          (time() - kube_job_status_start_time{job_name=~"alation-rdf-sync.*"} > 5400)
+          and (kube_job_status_active{job_name=~"alation-rdf-sync.*"} > 0)
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "alation-rdf-sync exceeded the 90-min deadline"
+
+      - alert: AlationSyncNoRecentSuccess
+        # concurrencyPolicy=Forbid + a stuck run can starve the schedule: no success in 3h.
+        expr: |
+          (time() - max(kube_job_status_completion_time{job_name=~"alation-rdf-sync.*"})) > 10800
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "alation-rdf-sync has not completed successfully in 3h"

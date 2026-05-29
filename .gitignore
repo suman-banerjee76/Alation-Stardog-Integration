@@ -1,0 +1,8 @@
+config.yaml
+stardog/vg_alation.rendered.sms2
+.claude/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/

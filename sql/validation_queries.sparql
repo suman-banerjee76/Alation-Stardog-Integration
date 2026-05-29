@@ -1,0 +1,12 @@
+# Q1 concepts with realising tables
+SELECT ?concept (COUNT(?tbl) AS ?n) WHERE { GRAPH <virtual://vg_alation> { ?tbl alat:realises ?concept } } GROUP BY ?concept ORDER BY DESC(?n)
+# Q2 ontology classes with NO realising table
+SELECT ?concept WHERE { ?concept a owl:Class . FILTER NOT EXISTS { GRAPH <virtual://vg_alation> { ?tbl alat:realises ?concept } } }
+# Q3 concept -> realising tables (+ stewards) and close-matching glossary terms
+SELECT ?concept ?tbl ?steward ?term WHERE { GRAPH <virtual://vg_alation> { ?tbl alat:realises ?concept . OPTIONAL { ?tbl alat:steward ?steward } OPTIONAL { ?term a alat:GlossaryTerm ; skos:closeMatch ?concept } } } ORDER BY ?concept ?tbl
+# Q4 data products with full governance surface
+SELECT ?dp ?title ?publisher ?license ?accessRights ?version WHERE { GRAPH <virtual://vg_alation> { ?dp a alat:DataProduct ; dct:title ?title . OPTIONAL { ?dp dct:publisher ?publisher } OPTIONAL { ?dp dct:license ?license } OPTIONAL { ?dp dct:accessRights ?accessRights } OPTIONAL { ?dp dct:hasVersion ?version } } } ORDER BY ?dp
+# Q5 data product -> wrapped tables -> realised concepts (binding chain)
+SELECT ?dp ?tbl ?concept WHERE { GRAPH <virtual://vg_alation> { ?dp alat:wraps ?tbl . OPTIONAL { ?tbl alat:realises ?concept } } } ORDER BY ?dp ?tbl
+# Q6 provisional suggestions not yet confirmed
+SELECT ?tbl ?concept ?conf WHERE { GRAPH <virtual://vg_alation> { ?tbl alat:suggestedConcept ?concept ; alat:suggestionConfidence ?conf } }

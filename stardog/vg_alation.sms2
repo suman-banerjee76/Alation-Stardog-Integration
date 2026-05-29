@@ -1,0 +1,94 @@
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX dct:  <http://purl.org/dc/terms/>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX alat: <https://company.com/ns/alation/>
+
+-- (1) Tables -> DCAT distributions (technical overlay)
+MAPPING <urn:alation:tables>
+FROM SQL { SELECT alation_key, ds_id, schema_name, table_name, object_type,
+                  title, description, url, last_updated_at FROM alation_table }
+TO { ?tbl a alat:Table, dcat:Distribution ;
+       dct:title ?title ; dct:description ?description ; dct:type ?object_type ;
+       dct:date ?last_updated_at ; dct:identifier ?alation_key ;
+       rdfs:label ?title ; rdfs:comment ?description ; rdfs:seeAlso ?url ;
+       dcat:landingPage ?url ; alat:dataSourceId ?ds_id ; alat:schema ?schema_name . }
+WHERE { BIND (template("https://company.com/ns/alation/tbl/{alation_key}") AS ?tbl) } ;
+
+-- (2) CONFIRMED bridge: alat:realises from the real Ontology URI field
+MAPPING <urn:alation:tables:realises>
+FROM SQL { SELECT alation_key, custom_fields -> 'Ontology URI' ->> 'value' AS onto_uri
+           FROM alation_table
+           WHERE custom_fields ? 'Ontology URI'
+             AND custom_fields -> 'Ontology URI' ->> 'value' IS NOT NULL }
+TO { ?tbl alat:realises ?concept . }
+WHERE { BIND (template("https://company.com/ns/alation/tbl/{alation_key}") AS ?tbl)
+        BIND (iri(?onto_uri) AS ?concept) } ;
+
+-- (3) PROVISIONAL: alat:suggestedConcept (excludes Approved/Rejected)
+MAPPING <urn:alation:tables:suggested>
+FROM SQL { SELECT alation_key,
+                  custom_fields -> 'Suggested Ontology URI' ->> 'value' AS sugg_uri,
+                  custom_fields -> 'Suggestion Confidence'  ->> 'value' AS sugg_conf
+           FROM alation_table
+           WHERE custom_fields ? 'Suggested Ontology URI'
+             AND COALESCE(custom_fields -> 'Binding Status' ->> 'value','') NOT IN ('Approved','Rejected') }
+TO { ?tbl alat:suggestedConcept ?concept ; alat:suggestionConfidence ?sugg_conf . }
+WHERE { BIND (template("https://company.com/ns/alation/tbl/{alation_key}") AS ?tbl)
+        BIND (iri(?sugg_uri) AS ?concept) } ;
+
+-- (4) Alation-native datatype properties from custom fields
+MAPPING <urn:alation:tables:custom>
+FROM SQL { SELECT alation_key,
+                  custom_fields -> 'Steward'          ->> 'value' AS steward,
+                  custom_fields -> 'Freshness SLO'    ->> 'value' AS freshness_slo,
+                  custom_fields -> 'Contract Version' ->> 'value' AS contract_version
+           FROM alation_table }
+TO { ?tbl alat:steward ?steward ; alat:freshnessSlo ?freshness_slo ; alat:contractVersion ?contract_version . }
+WHERE { BIND (template("https://company.com/ns/alation/tbl/{alation_key}") AS ?tbl) } ;
+
+-- (5) Glossary documents -> SKOS concepts (+ closeMatch to ontology)
+-- The Glossary Hub id is environment-specific (design §11). This file is a TEMPLATE: render the
+-- hub-id placeholder below before `virtual add` —
+--   python -m alation_rdf_sync resolve-hub      # find the id (after a sync)
+--   python -m alation_rdf_sync render-sms2 > vg_alation.rendered.sms2
+MAPPING <urn:alation:glossary>
+FROM SQL { SELECT d.alation_id, d.title, d.description,
+                  d.custom_fields -> 'Ontology URI' ->> 'value' AS onto_uri
+           FROM alation_document d WHERE d.document_hub_id = @GLOSSARY_DOCUMENT_HUB_ID@ }
+TO { ?term a alat:GlossaryTerm, skos:Concept ;
+       skos:prefLabel ?title ; skos:definition ?description ; skos:closeMatch ?concept . }
+WHERE { BIND (template("https://company.com/ns/alation/doc/{alation_id}") AS ?term)
+        BIND (iri(?onto_uri) AS ?concept) } ;
+
+-- (6) Data Products -> DCAT datasets with full governed DCTERMS surface
+MAPPING <urn:alation:data_products>
+FROM SQL { SELECT product_id, name, short_description, description, product_type, visibility,
+                  contact_name, publisher, marketplace_id, url, version, updated_at,
+                  licence, rights, audience, contract, delivery_systems, recommended_products
+           FROM alation_data_product }
+TO { ?dp a alat:DataProduct, dcat:Dataset ;
+       dct:identifier ?product_id ; skos:notation ?product_id ;
+       dct:title ?name ; skos:prefLabel ?name ; rdfs:label ?name ;
+       dct:abstract ?short_description ; dct:description ?description ; rdfs:comment ?description ;
+       dct:type ?product_type ; dct:accessRights ?visibility ;
+       dct:creator ?contact_name ; dct:rightsHolder ?contact_name ; dct:publisher ?publisher ;
+       skos:inScheme ?scheme ; rdfs:seeAlso ?url ; dcat:landingPage ?url ;
+       dct:hasVersion ?version ; dct:date ?updated_at ;
+       dct:license ?licence_lit ; dct:rights ?rights_lit ; dct:audience ?audience_lit ;
+       dct:provenance ?contract_lit ; dct:source ?contract_lit ;
+       dct:format ?delivery_lit ; dct:relation ?recommended_lit . }
+WHERE { BIND (template("https://company.com/ns/alation/dp/{product_id}") AS ?dp)
+        BIND (template("https://company.com/ns/alation/scheme/{marketplace_id}") AS ?scheme)
+        BIND (str(?licence) AS ?licence_lit) BIND (str(?rights) AS ?rights_lit)
+        BIND (str(?audience) AS ?audience_lit) BIND (str(?contract) AS ?contract_lit)
+        BIND (str(?delivery_systems) AS ?delivery_lit) BIND (str(?recommended_products) AS ?recommended_lit) } ;
+
+-- (7) Data Product -> physical table linkage via ODPS recordSets
+MAPPING <urn:alation:dp:wraps>
+FROM SQL { SELECT dp.product_id, rs.value ->> 'tableKey' AS alation_key
+           FROM alation_data_product dp, jsonb_array_elements(dp.record_sets) rs
+           WHERE rs.value ->> 'tableKey' IS NOT NULL }
+TO { ?dp alat:wraps ?tbl ; dct:tableOfContents ?tbl ; rdfs:member ?tbl . }
+WHERE { BIND (template("https://company.com/ns/alation/dp/{product_id}") AS ?dp)
+        BIND (template("https://company.com/ns/alation/tbl/{alation_key}") AS ?tbl) } ;
